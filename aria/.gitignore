@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+.turbo/
+out/
+dist/
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+
+# Large scans
+scans/*
+!scans/.gitkeep
+!scans/README.md
+*.splat
+*.ply
+*.glb
+
+# Logs
+*.log
+logs/
+
+.claude
+
+CLAUDE.md
+
+public/scans/
+
+docs
+test-results/
+playwright-report/
