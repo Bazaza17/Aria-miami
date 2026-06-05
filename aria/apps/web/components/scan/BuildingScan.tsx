@@ -6,6 +6,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { USDZLoader } from "three/examples/jsm/loaders/USDZLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 
 import { useAgentRun } from "@/components/agent/AgentRunProvider";
 import { useScenario } from "@/components/walkthrough/ScenarioProvider";
@@ -216,7 +217,11 @@ export function BuildingScan({
       const isGltf = /\.(glb|gltf)(\?|$)/i.test(scanUrl);
       try {
         const group = isGltf
-          ? (await new GLTFLoader().loadAsync(scanUrl)).scene
+          ? (
+              await new GLTFLoader()
+                .setMeshoptDecoder(MeshoptDecoder)
+                .loadAsync(scanUrl)
+            ).scene
           : await new USDZLoader().loadAsync(scanUrl);
         if (cancelled) return;
 
