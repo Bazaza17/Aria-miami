@@ -17,7 +17,16 @@ from aria.tools.registry import TOOLS
 MAX_ITERATIONS = 25
 MODEL = "claude-sonnet-4-5"
 
-_client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+# Lazily constructed so the API can boot (and serve cached replays) even if
+# ANTHROPIC_API_KEY is missing/empty. Only a live run touches the client.
+_client: AsyncAnthropic | None = None
+
+
+def _get_client() -> AsyncAnthropic:
+    global _client
+    if _client is None:
+        _client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    return _client
 
 
 def _extract_json(text: str) -> dict | None:
@@ -55,7 +64,7 @@ async def run_agent(
     messages: list[MessageParam] = [{"role": "user", "content": user_message}]
 
     for iteration in range(1, MAX_ITERATIONS + 1):
-        response = await _client.messages.create(
+        response = await _get_client().messages.create(
             model=MODEL,
             max_tokens=8192,
             system=SYSTEM_PROMPT,
