@@ -58,22 +58,25 @@ function Globe() {
       const elapsed = t - startTime;
       ctx.clearRect(0, 0, W(), H());
 
-      const cx = W() / 2;
-      const cy = H() / 2 + H() * 0.02;
-      const r = Math.min(W(), H()) * 0.36;
+      // Offset the globe to the right half so the hero copy on the left
+      // stays clean. On narrow screens fall back toward center.
+      const wide = W() > 900;
+      const cx = wide ? W() * 0.72 : W() / 2;
+      const cy = wide ? H() / 2 : H() * 0.32;
+      const r = Math.min(W(), H()) * (wide ? 0.42 : 0.34);
 
       angle += 0.12;
 
-      for (let lat = -80; lat <= 80; lat += 10) {
-        for (let lng = -180; lng <= 180; lng += 10) {
+      for (let lat = -80; lat <= 80; lat += 7) {
+        for (let lng = -180; lng <= 180; lng += 7) {
           const { x, y, z } = toXY(lat, lng, angle, r, cx, cy);
           if (z < 0) continue;
           const depth = z / r;
-          const opacity = 0.07 + depth * 0.18;
-          const size = 0.6 + depth * 0.9;
+          const opacity = 0.12 + depth * 0.28;
+          const size = 0.7 + depth * 1.0;
           ctx.beginPath();
           ctx.arc(x, y, size, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(180,180,180,${opacity})`;
+          ctx.fillStyle = `rgba(190,190,190,${opacity})`;
           ctx.fill();
         }
       }
