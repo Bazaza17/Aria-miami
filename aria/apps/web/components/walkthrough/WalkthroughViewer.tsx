@@ -15,12 +15,10 @@ import {
   type Viewpoint,
 } from "@/lib/walkthrough-data";
 
-import { ScenarioStrip } from "./ScenarioStrip";
+import { useScenario } from "./ScenarioProvider";
 import {
   allVariantsFor,
   resolveVariant,
-  type SurgeValue,
-  type WindValue,
 } from "./variants";
 
 type Dir = "forward" | "back" | "left" | "right";
@@ -66,9 +64,8 @@ function Viewer({
   const [isPanning, setIsPanning] = useState(false);
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
 
-  // Scenario state lives at the viewer level so it persists across viewpoints.
-  const [surge, setSurge] = useState<SurgeValue>(0);
-  const [wind, setWind] = useState<WindValue>(0);
+  // Scenario state shared with 3D scan (evac + flood sync).
+  const { surge, wind, setSurge, setWind } = useScenario();
   // URLs that 404'd at runtime; resolveVariant falls back to the original.
   const [failedSet, setFailedSet] = useState<ReadonlySet<string>>(new Set());
 
@@ -264,13 +261,6 @@ function Viewer({
         );
       })}
       </div>
-
-      <ScenarioStrip
-        surge={surge}
-        wind={wind}
-        onSurgeChange={setSurge}
-        onWindChange={setWind}
-      />
     </div>
   );
 }

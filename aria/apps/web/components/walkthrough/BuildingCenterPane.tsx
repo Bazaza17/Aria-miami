@@ -3,15 +3,26 @@
 import { useState } from "react";
 
 import { BuildingScan } from "@/components/scan/BuildingScan";
+import { ScenarioStrip } from "@/components/walkthrough/ScenarioStrip";
+import { ScenarioProvider, useScenario } from "@/components/walkthrough/ScenarioProvider";
 import { WalkthroughViewer } from "@/components/walkthrough/WalkthroughViewer";
 import { WALKTHROUGHS } from "@/lib/walkthrough-data";
 
 type Tab = "scan" | "walkthrough";
 
 export function BuildingCenterPane({ buildingId }: { buildingId: string }) {
+  return (
+    <ScenarioProvider>
+      <BuildingCenterPaneInner buildingId={buildingId} />
+    </ScenarioProvider>
+  );
+}
+
+function BuildingCenterPaneInner({ buildingId }: { buildingId: string }) {
   const [tab, setTab] = useState<Tab>("scan");
   const walk = WALKTHROUGHS[buildingId];
   const viewpointCount = walk ? Object.keys(walk.viewpoints).length : 0;
+  const { surge, wind, setSurge, setWind } = useScenario();
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
@@ -38,6 +49,13 @@ export function BuildingCenterPane({ buildingId }: { buildingId: string }) {
           <WalkthroughViewer buildingId={buildingId} />
         </TabPanel>
       </div>
+
+      <ScenarioStrip
+        surge={surge}
+        wind={wind}
+        onSurgeChange={setSurge}
+        onWindChange={setWind}
+      />
     </div>
   );
 }

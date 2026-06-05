@@ -1,14 +1,15 @@
 import type { PreplanReport, RiskScore } from "@/lib/types";
 
+import {
+  anchorToWorld,
+  type NormalizedAnchor,
+} from "./scan-coords";
+
 export type HazardKind = "wind" | "surge" | "flood";
 export type HazardFilter = "all" | HazardKind;
 
-/** Normalized anchor in the centered mesh bounding box (0–1 per axis). */
-export type NormalizedAnchor = {
-  nx: number;
-  ny: number;
-  nz: number;
-};
+export type { NormalizedAnchor };
+export { anchorToWorld };
 
 export type ScanHazardPin = {
   id: string;
@@ -111,17 +112,6 @@ export function pinsFromReport(
   }
 
   return pins;
-}
-
-export function anchorToWorld(
-  anchor: NormalizedAnchor,
-  size: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } {
-  return {
-    x: (anchor.nx - 0.5) * size.x,
-    y: (anchor.ny - 0.5) * size.y,
-    z: (anchor.nz - 0.5) * size.z,
-  };
 }
 
 export function filterPins(
