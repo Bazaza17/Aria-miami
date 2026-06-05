@@ -39,6 +39,7 @@ export type ScanViewMode = "default" | "evac" | "hazards";
 const SCANS: Record<string, string> = {
   "014b39a9-09b8-432b-9b62-363e06383d1f": "/scans/building_a/scan.usdz",
   "870d979d-6eaf-4d7f-894a-8ca34e527237": "/scans/building_b/scan.usdz",
+  "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1": "/scans/the_dock/scan.usdz",
 };
 
 const PIN_REVEAL_MS = 180;
