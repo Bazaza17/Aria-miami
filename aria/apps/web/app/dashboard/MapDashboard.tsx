@@ -46,7 +46,7 @@ export function MapDashboard({
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/dark-v11",
-      center: [-80.18474662564341, 25.831729972197365],
+      center: [-80.20217163896397, 25.801267443503537],
       zoom: 17,
       pitch: 60,
       bearing: -20,
