@@ -35,7 +35,64 @@ function Globe() {
       return [v[0] / m, v[1] / m, v[2] / m];
     })();
 
-    let angle = 0;
+    // Set initial angle so Miami (lng -80.19) faces front at startup.
+    // theta = (lng + 180 + angle) * π/180; want sin(theta) ≈ 1 → theta ≈ π/2 → angle ≈ -99.81 + 90 = offset below.
+    let angle = -9.81; // shifts Miami to ~90° theta so uz is maximised at t=0
+
+    const cities: [number, number, string][] = [
+      [25.77, -80.19, "MIAMI"],
+      [27.95, -82.46, "TAMPA"],
+      [29.95, -90.07, "NEW ORLEANS"],
+      [32.79, -79.94, "CHARLESTON"],
+    ];
+
+    function project(lat: number, lng: number, cx: number, cy: number, r: number) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lng + 180 + angle) * (Math.PI / 180);
+      const ux = Math.sin(phi) * Math.cos(theta);
+      const uy = Math.cos(phi);
+      const uz = Math.sin(phi) * Math.sin(theta);
+      return { ux, uy, uz, sx: cx + ux * r, sy: cy - uy * r };
+    }
+
+    function drawArc(
+      lat1: number, lng1: number,
+      lat2: number, lng2: number,
+      cx: number, cy: number, r: number,
+      opacity: number,
+    ) {
+      const steps = 60;
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= steps; i++) {
+        const t2 = i / steps;
+        // Spherical linear interpolation
+        const phi1 = (90 - lat1) * (Math.PI / 180);
+        const theta1 = (lng1 + 180 + angle) * (Math.PI / 180);
+        const phi2 = (90 - lat2) * (Math.PI / 180);
+        const theta2 = (lng2 + 180 + angle) * (Math.PI / 180);
+        const ax = Math.sin(phi1) * Math.cos(theta1);
+        const ay = Math.cos(phi1);
+        const az = Math.sin(phi1) * Math.sin(theta1);
+        const bx = Math.sin(phi2) * Math.cos(theta2);
+        const by = Math.cos(phi2);
+        const bz = Math.sin(phi2) * Math.sin(theta2);
+        // Linear interp then normalize (approximate great circle)
+        const ix = ax + (bx - ax) * t2;
+        const iy = ay + (by - ay) * t2;
+        const iz = az + (bz - az) * t2;
+        const im = Math.hypot(ix, iy, iz);
+        const nx = ix / im, ny = iy / im, nz = iz / im;
+        if (nz < 0) { started = false; continue; } // behind the globe
+        const px = cx + nx * r;
+        const py = cy - ny * r;
+        if (!started) { ctx.moveTo(px, py); started = true; }
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = `rgba(255,107,0,${opacity})`;
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+    }
 
     function draw(t: number) {
       ctx.clearRect(0, 0, W(), H());
@@ -45,10 +102,9 @@ function Globe() {
       const cy = wide ? H() * 0.5 : H() * 0.34;
       const r = wide ? Math.min(H() * 0.62, W() * 0.46) : Math.min(W(), H()) * 0.36;
 
-      angle += 0.06;
+      angle += 0.03; // slower, smoother rotation
 
       // ── Atmosphere glow (behind sphere) ──
-      // Crescent glow centered on the lit limb (upper-right).
       const glowX = cx + 0.62 * r;
       const glowY = cy - 0.78 * r;
       const pulse = (Math.sin(t * 0.0012) + 1) / 2;
@@ -69,7 +125,7 @@ function Globe() {
       ctx.arc(cx, cy, r * 1.18, 0, Math.PI * 2);
       ctx.fill();
 
-      // ── Sphere body (dark, shaded toward the light) ──
+      // ── Sphere body ──
       const bodyX = cx + L[0] * r * 0.5;
       const bodyY = cy - L[1] * r * 0.5;
       const body = ctx.createRadialGradient(bodyX, bodyY, r * 0.1, cx, cy, r);
@@ -81,37 +137,25 @@ function Globe() {
       ctx.fillStyle = body;
       ctx.fill();
 
-      // ── Surface dot grid ──
-      const cities: [number, number][] = [
-        [25.77, -80.19], // Miami (primary)
-        [27.95, -82.46], // Tampa
-        [29.95, -90.07], // New Orleans
-        [32.79, -79.94], // Charleston
-      ];
+      // Clip all subsequent drawing to the sphere.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.clip();
 
+      // ── Surface dot grid ──
       for (let lat = -85; lat <= 85; lat += 6) {
         for (let lng = -180; lng <= 180; lng += 6) {
-          const phi = (90 - lat) * (Math.PI / 180);
-          const theta = (lng + 180 + angle) * (Math.PI / 180);
-          const ux = Math.sin(phi) * Math.cos(theta);
-          const uy = Math.cos(phi);
-          const uz = Math.sin(phi) * Math.sin(theta);
-          if (uz < -0.42) continue; // a little past the limb for crescent width
-
-          const sx = cx + ux * r;
-          const sy = cy - uy * r;
-
-          // Illumination: bright near the backlit upper-right limb.
+          const { ux, uy, uz, sx, sy } = project(lat, lng, cx, cy, r);
+          if (uz < -0.42) continue;
           const illum = Math.max(0, ux * L[0] + uy * L[1] + uz * L[2]);
           const k = Math.pow(illum, 1.5);
           const front = Math.min(1, (uz + 0.42) / 1.42);
-
           const rC = Math.round(60 + (255 - 60) * k);
           const gC = Math.round(55 + (110 - 55) * k);
           const bC = Math.round(58 - 58 * k);
           const opacity = (0.08 + front * 0.22) + k * 0.5;
           const size = 0.6 + front * 0.7 + k * 1.1;
-
           ctx.beginPath();
           ctx.arc(sx, sy, size, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(${rC},${gC},${bC},${Math.min(1, opacity)})`;
@@ -119,27 +163,65 @@ function Globe() {
         }
       }
 
+      // ── Great-circle arcs from Miami to other cities ──
+      const miamiCity = cities[0];
+      cities.slice(1).forEach(([lat, lng]) => {
+        const p = project(lat, lng, cx, cy, r);
+        if (p.uz > -0.1) {
+          drawArc(miamiCity[0], miamiCity[1], lat, lng, cx, cy, r, 0.18);
+        }
+      });
+
+      ctx.restore(); // end sphere clip
+
       // ── City pins (front-facing only) ──
-      cities.forEach(([lat, lng], i) => {
-        const phi = (90 - lat) * (Math.PI / 180);
-        const theta = (lng + 180 + angle) * (Math.PI / 180);
-        const ux = Math.sin(phi) * Math.cos(theta);
-        const uy = Math.cos(phi);
-        const uz = Math.sin(phi) * Math.sin(theta);
-        if (uz < 0.02) return;
-        const sx = cx + ux * r;
-        const sy = cy - uy * r;
+      cities.forEach(([lat, lng, label], i) => {
+        const { uz, sx, sy } = project(lat, lng, cx, cy, r);
+        if (uz < 0.05) return;
         const isPrimary = i === 0;
-        const pp = (Math.sin(t * 0.004 + i) + 1) / 2;
+        const fade = Math.min(1, (uz - 0.05) / 0.25);
+
+        // Pulse ring
+        const pp = (Math.sin(t * 0.003 + i * 1.3) + 1) / 2;
+        const pulseR = (isPrimary ? 9 : 5) + pp * (isPrimary ? 12 : 6);
         ctx.beginPath();
-        ctx.arc(sx, sy, (isPrimary ? 5 : 3) + pp * (isPrimary ? 6 : 3), 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,107,0,${0.4 - pp * 0.3})`;
-        ctx.lineWidth = 1;
+        ctx.arc(sx, sy, pulseR, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,107,0,${fade * (0.35 - pp * 0.28)})`;
+        ctx.lineWidth = isPrimary ? 1.5 : 1;
         ctx.stroke();
+
+        // Second static ring
         ctx.beginPath();
-        ctx.arc(sx, sy, isPrimary ? 3 : 2, 0, Math.PI * 2);
-        ctx.fillStyle = "#ff6b00";
+        ctx.arc(sx, sy, isPrimary ? 7 : 4, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,107,0,${fade * 0.5})`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+
+        // Crosshair lines
+        const ch = isPrimary ? 10 : 6;
+        const gap = isPrimary ? 4 : 2.5;
+        ctx.strokeStyle = `rgba(255,107,0,${fade * 0.6})`;
+        ctx.lineWidth = 0.8;
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+          ctx.beginPath();
+          ctx.moveTo(sx + dx * gap, sy + dy * gap);
+          ctx.lineTo(sx + dx * (gap + ch), sy + dy * (gap + ch));
+          ctx.stroke();
+        });
+
+        // Solid centre dot
+        ctx.beginPath();
+        ctx.arc(sx, sy, isPrimary ? 3 : 1.8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,107,0,${fade})`;
         ctx.fill();
+
+        // Label
+        if (isPrimary || uz > 0.25) {
+          ctx.font = `${isPrimary ? 600 : 400} ${isPrimary ? 9 : 8}px monospace`;
+          ctx.fillStyle = `rgba(255,107,0,${fade * (isPrimary ? 0.9 : 0.55)})`;
+          ctx.letterSpacing = "0.15em";
+          ctx.fillText(label, sx + (isPrimary ? 14 : 10), sy - (isPrimary ? 10 : 7));
+        }
       });
 
       rafRef.current = requestAnimationFrame(draw);
