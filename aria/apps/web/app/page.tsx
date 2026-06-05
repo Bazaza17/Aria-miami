@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 
+// ── Eclipse globe (backlit sphere, ORCA-style) ───────────────────────────────
+
 function Globe() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
@@ -25,126 +27,120 @@ function Globe() {
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
 
-    const cities: [number, number, string][] = [
-      [25.77, -80.19, "MIAMI"],
-      [40.71, -74.01, "NEW YORK"],
-      [29.76, -95.37, "HOUSTON"],
-      [34.05, -118.24, "LOS ANGELES"],
-      [41.85, -87.65, "CHICAGO"],
-      [29.95, -90.07, "NEW ORLEANS"],
-      [27.95, -82.46, "TAMPA"],
-      [32.79, -79.94, "CHARLESTON"],
-    ];
-
-    const arcs = cities.slice(1).map((_, i) => ({
-      progress: 0,
-      delay: i * 500,
-    }));
+    // Light direction: backlit from upper-right, behind the globe (negative z)
+    // → thin bright crescent along the upper-right limb (eclipse look).
+    const L = (() => {
+      const v = [0.32, 0.42, -0.85];
+      const m = Math.hypot(v[0], v[1], v[2]);
+      return [v[0] / m, v[1] / m, v[2] / m];
+    })();
 
     let angle = 0;
-    let startTime = 0;
-
-    function toXY(lat: number, lng: number, rotDeg: number, r: number, cx: number, cy: number) {
-      const phi = (90 - lat) * (Math.PI / 180);
-      const theta = (lng + 180 + rotDeg) * (Math.PI / 180);
-      const x = r * Math.sin(phi) * Math.cos(theta);
-      const y = r * Math.cos(phi);
-      const z = r * Math.sin(phi) * Math.sin(theta);
-      return { x: cx + x, y: cy - y, z };
-    }
 
     function draw(t: number) {
-      if (!startTime) startTime = t;
-      const elapsed = t - startTime;
       ctx.clearRect(0, 0, W(), H());
 
-      // Offset the globe to the right half so the hero copy on the left
-      // stays clean. On narrow screens fall back toward center.
       const wide = W() > 900;
-      const cx = wide ? W() * 0.72 : W() / 2;
-      const cy = wide ? H() / 2 : H() * 0.32;
-      const r = Math.min(W(), H()) * (wide ? 0.42 : 0.34);
+      const cx = wide ? W() * 0.82 : W() * 0.5;
+      const cy = wide ? H() * 0.5 : H() * 0.34;
+      const r = wide ? Math.min(H() * 0.62, W() * 0.46) : Math.min(W(), H()) * 0.36;
 
-      angle += 0.12;
+      angle += 0.06;
 
-      for (let lat = -80; lat <= 80; lat += 7) {
-        for (let lng = -180; lng <= 180; lng += 7) {
-          const { x, y, z } = toXY(lat, lng, angle, r, cx, cy);
-          if (z < 0) continue;
-          const depth = z / r;
-          const opacity = 0.12 + depth * 0.28;
-          const size = 0.7 + depth * 1.0;
+      // ── Atmosphere glow (behind sphere) ──
+      // Crescent glow centered on the lit limb (upper-right).
+      const glowX = cx + 0.62 * r;
+      const glowY = cy - 0.78 * r;
+      const pulse = (Math.sin(t * 0.0012) + 1) / 2;
+      const g1 = ctx.createRadialGradient(glowX, glowY, r * 0.1, glowX, glowY, r * 1.5);
+      g1.addColorStop(0, `rgba(255,120,20,${0.5 + pulse * 0.12})`);
+      g1.addColorStop(0.4, "rgba(255,90,0,0.16)");
+      g1.addColorStop(1, "rgba(255,90,0,0)");
+      ctx.fillStyle = g1;
+      ctx.fillRect(0, 0, W(), H());
+
+      // Thin full rim halo.
+      const ring = ctx.createRadialGradient(cx, cy, r * 0.92, cx, cy, r * 1.18);
+      ring.addColorStop(0, "rgba(255,107,0,0)");
+      ring.addColorStop(0.5, "rgba(255,107,0,0.10)");
+      ring.addColorStop(1, "rgba(255,107,0,0)");
+      ctx.fillStyle = ring;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 1.18, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ── Sphere body (dark, shaded toward the light) ──
+      const bodyX = cx + L[0] * r * 0.5;
+      const bodyY = cy - L[1] * r * 0.5;
+      const body = ctx.createRadialGradient(bodyX, bodyY, r * 0.1, cx, cy, r);
+      body.addColorStop(0, "rgba(26,22,20,1)");
+      body.addColorStop(0.6, "rgba(12,11,12,1)");
+      body.addColorStop(1, "rgba(6,6,8,1)");
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = body;
+      ctx.fill();
+
+      // ── Surface dot grid ──
+      const cities: [number, number][] = [
+        [25.77, -80.19], // Miami (primary)
+        [27.95, -82.46], // Tampa
+        [29.95, -90.07], // New Orleans
+        [32.79, -79.94], // Charleston
+      ];
+
+      for (let lat = -85; lat <= 85; lat += 6) {
+        for (let lng = -180; lng <= 180; lng += 6) {
+          const phi = (90 - lat) * (Math.PI / 180);
+          const theta = (lng + 180 + angle) * (Math.PI / 180);
+          const ux = Math.sin(phi) * Math.cos(theta);
+          const uy = Math.cos(phi);
+          const uz = Math.sin(phi) * Math.sin(theta);
+          if (uz < -0.42) continue; // a little past the limb for crescent width
+
+          const sx = cx + ux * r;
+          const sy = cy - uy * r;
+
+          // Illumination: bright near the backlit upper-right limb.
+          const illum = Math.max(0, ux * L[0] + uy * L[1] + uz * L[2]);
+          const k = Math.pow(illum, 1.5);
+          const front = Math.min(1, (uz + 0.42) / 1.42);
+
+          const rC = Math.round(60 + (255 - 60) * k);
+          const gC = Math.round(55 + (110 - 55) * k);
+          const bC = Math.round(58 - 58 * k);
+          const opacity = (0.08 + front * 0.22) + k * 0.5;
+          const size = 0.6 + front * 0.7 + k * 1.1;
+
           ctx.beginPath();
-          ctx.arc(x, y, size, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(190,190,190,${opacity})`;
+          ctx.arc(sx, sy, size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${rC},${gC},${bC},${Math.min(1, opacity)})`;
           ctx.fill();
         }
       }
 
-      ctx.beginPath();
-      let eqStarted = false;
-      for (let lng = -180; lng <= 180; lng += 3) {
-        const { x, y, z } = toXY(0, lng, angle, r, cx, cy);
-        if (z < 0) { eqStarted = false; continue; }
-        if (!eqStarted) { ctx.moveTo(x, y); eqStarted = true; }
-        else ctx.lineTo(x, y);
-      }
-      ctx.strokeStyle = "rgba(255,107,0,0.08)";
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-
-      const miami = cities[0];
-      cities.slice(1).forEach(([lat, lng], i) => {
-        const arc = arcs[i];
-        if (elapsed < arc.delay) return;
-        arc.progress = Math.min(1, arc.progress + 0.007);
-
-        const steps = 50;
-        const drawn = Math.floor(arc.progress * steps);
+      // ── City pins (front-facing only) ──
+      cities.forEach(([lat, lng], i) => {
+        const phi = (90 - lat) * (Math.PI / 180);
+        const theta = (lng + 180 + angle) * (Math.PI / 180);
+        const ux = Math.sin(phi) * Math.cos(theta);
+        const uy = Math.cos(phi);
+        const uz = Math.sin(phi) * Math.sin(theta);
+        if (uz < 0.02) return;
+        const sx = cx + ux * r;
+        const sy = cy - uy * r;
+        const isPrimary = i === 0;
+        const pp = (Math.sin(t * 0.004 + i) + 1) / 2;
         ctx.beginPath();
-        let pathStarted = false;
-        for (let s = 0; s <= drawn; s++) {
-          const frac = s / steps;
-          const iLat = miami[0] + (lat - miami[0]) * frac;
-          const iLng = miami[1] + (lng - miami[1]) * frac;
-          const arcLift = Math.sin(frac * Math.PI) * r * 0.15;
-          const { x, y, z } = toXY(iLat, iLng, angle, r, cx, cy);
-          if (z < 0) { pathStarted = false; continue; }
-          const adjY = y - arcLift * (z / r);
-          if (!pathStarted) { ctx.moveTo(x, adjY); pathStarted = true; }
-          else ctx.lineTo(x, adjY);
-        }
-        ctx.strokeStyle = `rgba(255,107,0,${0.15 + arc.progress * 0.35})`;
-        ctx.lineWidth = 0.9;
-        ctx.stroke();
-
-        if (arc.progress > 0.98) {
-          const { x, y, z } = toXY(lat, lng, angle, r, cx, cy);
-          if (z > 0) {
-            ctx.beginPath();
-            ctx.arc(x, y, 2, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(255,107,0,0.8)";
-            ctx.fill();
-          }
-        }
-      });
-
-      const { x: mx, y: my, z: mz } = toXY(miami[0], miami[1], angle, r, cx, cy);
-      if (mz > 0) {
-        const pulse = (Math.sin(t * 0.003) + 1) / 2;
-        ctx.beginPath();
-        ctx.arc(mx, my, 5 + pulse * 9, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,107,0,${0.35 - pulse * 0.28})`;
+        ctx.arc(sx, sy, (isPrimary ? 5 : 3) + pp * (isPrimary ? 6 : 3), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,107,0,${0.4 - pp * 0.3})`;
         ctx.lineWidth = 1;
         ctx.stroke();
         ctx.beginPath();
-        ctx.arc(mx, my, 3.5, 0, Math.PI * 2);
+        ctx.arc(sx, sy, isPrimary ? 3 : 2, 0, Math.PI * 2);
         ctx.fillStyle = "#ff6b00";
         ctx.fill();
-        ctx.font = `bold ${Math.round(r * 0.038)}px monospace`;
-        ctx.fillStyle = "rgba(255,107,0,0.85)";
-        ctx.fillText("MIAMI", mx + 9, my - 5);
-      }
+      });
 
       rafRef.current = requestAnimationFrame(draw);
     }
@@ -158,6 +154,50 @@ function Globe() {
 
   return <canvas ref={canvasRef} className="h-full w-full block" />;
 }
+
+// Floating hazard alert cards anchored over the globe (ORCA-style).
+function AlertCard({
+  title,
+  place,
+  className,
+  delay,
+}: {
+  title: string;
+  place: string;
+  className: string;
+  delay: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.6, delay, ease: "easeOut" }}
+      className={`absolute z-[5] w-52 ${className}`}
+    >
+      <div className="rounded-md border border-[#ff6b00]/25 bg-black/70 p-3 backdrop-blur-sm shadow-[0_8px_30px_-10px_rgba(255,107,0,0.4)]">
+        <div className="mb-2 flex items-center gap-2">
+          <motion.span
+            animate={{ opacity: [1, 0.3, 1] }}
+            transition={{ repeat: Infinity, duration: 1.8 }}
+            className="h-1.5 w-1.5 rounded-full bg-[#ff6b00]"
+          />
+          <span className="font-mono text-[10px] tracking-[0.2em] text-[#ff6b00]">{title}</span>
+        </div>
+        <div className="font-mono text-sm font-medium tracking-[0.15em] text-white/90">{place}</div>
+        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
+          <motion.div
+            initial={{ width: "0%" }}
+            animate={{ width: "78%" }}
+            transition={{ duration: 1.2, delay: delay + 0.3 }}
+            className="h-full bg-[#ff6b00]/70"
+          />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Shared primitives ────────────────────────────────────────────────────────
 
 function SectionLabel({ children, center }: { children: React.ReactNode; center?: boolean }) {
   return (
@@ -190,11 +230,13 @@ function Step({ n, title, body }: { n: string; title: string; body: string }) {
   );
 }
 
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 export default function LandingPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ container: containerRef });
   const globeOpacity = useTransform(scrollYProgress, [0, 0.15], [1, 0]);
-  const globeScale = useTransform(scrollYProgress, [0, 0.15], [1, 0.94]);
+  const globeScale = useTransform(scrollYProgress, [0, 0.15], [1, 0.96]);
 
   return (
     <div
@@ -206,6 +248,8 @@ export default function LandingPage() {
       <section className="relative flex min-h-screen flex-col" style={{ scrollSnapAlign: "start" }}>
         <motion.div style={{ opacity: globeOpacity, scale: globeScale }} className="absolute inset-0 pointer-events-none">
           <Globe />
+          <AlertCard title="STRUCTURAL ALERT" place="MIAMI" className="right-[20%] top-[26%]" delay={0.9} />
+          <AlertCard title="SURGE WATCH" place="MIAMI BEACH" className="right-[5%] top-[48%]" delay={1.3} />
         </motion.div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black to-transparent" />
 
