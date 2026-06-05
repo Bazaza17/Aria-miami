@@ -18,10 +18,3 @@ The demo is end-to-end:
 3. **Run the agent** — Claude Sonnet 4.5 picks tools, evaluates results, sometimes re-fetches with different parameters, and produces a strict-schema JSON report. The agent's `hazards.*.annotations_3d` are then distributed across walkthrough viewpoints.
 4. **Drag the scenario slider** — the walkthrough photo crossfades to a photorealistic Gemini-generated variant (1 ft, 3 ft, 6 ft, 10 ft of storm surge; Cat 1/3/5 wind aftermath for exteriors). 170 variants pre-baked offline.
 
-That last part is the wow moment: same room, draggable through a hurricane.
-
-## Built by
-
-Lincoln Bazail — solo build. Strategic AI pair programming via Claude Code; every architectural decision and the agent loop itself were authored, not generated wholesale.
-
-Day-job context: Lincoln works at Detect, a Miami AI company that runs VLM pipelines on drone imagery for utility-infrastructure inspection. Aria applies the same pattern — agent over visual + geospatial data — to building risk for first responders.
