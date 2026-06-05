@@ -22,9 +22,18 @@ export type ScanHazardPin = {
 
 const BUILDING_A_ID = "014b39a9-09b8-432b-9b62-363e06383d1f";
 const BUILDING_B_ID = "870d979d-6eaf-4d7f-894a-8ca34e527237";
+const THE_DOCK_ID = "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1";
 
 /** Building-specific anchor presets (tuned to each LiDAR capture orientation). */
 const BUILDING_SLOTS: Record<string, Record<string, NormalizedAnchor>> = {
+  [THE_DOCK_ID]: {
+    roof: { nx: 0.5, ny: 0.95, nz: 0.5 },
+    hvac: { nx: 0.62, ny: 0.9, nz: 0.36 },
+    ground_egress: { nx: 0.5, ny: 0.06, nz: 0.85 },
+    glass_facade: { nx: 0.5, ny: 0.4, nz: 0.88 },
+    interior: { nx: 0.5, ny: 0.45, nz: 0.5 },
+    open_court: { nx: 0.5, ny: 0.06, nz: 0.08 },
+  },
   [BUILDING_A_ID]: {
     roof: { nx: 0.52, ny: 0.94, nz: 0.48 },
     hvac: { nx: 0.64, ny: 0.9, nz: 0.4 },

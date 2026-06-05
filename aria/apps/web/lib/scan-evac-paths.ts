@@ -46,12 +46,26 @@ export type EvacPlan = {
 
 const BUILDING_A_ID = "014b39a9-09b8-432b-9b62-363e06383d1f";
 const BUILDING_B_ID = "870d979d-6eaf-4d7f-894a-8ca34e527237";
+const THE_DOCK_ID = "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1";
 
 /**
  * Viewpoint → mesh anchors calibrated against LiDAR walkthrough capture order.
  * Each viewpoint id matches walkthrough-data.ts navigation graph (ground truth).
+ *
+ * The Dock is a single-story open bay: long axis is Z (~38 m depth), width is
+ * X (~26 m), floor at the mesh bottom (ny ≈ 0.05). nz ≈ 0.85 is the street-side
+ * bay door; nz ≈ 0.08 is the far end / outdoor assembly.
  */
 const VIEWPOINT_ANCHORS: Record<string, Record<string, NormalizedAnchor>> = {
+  [THE_DOCK_ID]: {
+    bay_entrance: floorAnchor(0.5, 0.85, 0.06),
+    bay_main: floorAnchor(0.5, 0.68, 0.07),
+    bay_center: floorAnchor(0.5, 0.5, 0.07),
+    bay_rear: floorAnchor(0.52, 0.32, 0.07),
+    side_north: floorAnchor(0.9, 0.46, 0.06),
+    dock_threshold: floorAnchor(0.44, 0.18, 0.05),
+    street_assembly: floorAnchor(0.5, 0.08, 0.04),
+  },
   [BUILDING_A_ID]: {
     hall_start: floorAnchor(0.46, 0.76, 0.09),
     hall_concourse: floorAnchor(0.5, 0.58, 0.09),
@@ -80,6 +94,83 @@ const EVAC_DATA: Record<
     routes: EvacRoute[];
   }
 > = {
+  [THE_DOCK_ID]: {
+    calibrationSource:
+      "LiDAR scan · The Dock open-bay capture · single-story 26×38 m",
+    assemblyExitId: "exit_assembly_street",
+    exits: [
+      {
+        id: "exit_main_bay",
+        label: "MAIN BAY DOOR",
+        viewpointId: "bay_entrance",
+        anchor: floorAnchor(0.5, 0.85, 0.05),
+        blockedAtSurgeFt: 1,
+        source: "annotation: GRADE-LEVEL ROLL-UP · SURGE ENTRY",
+      },
+      {
+        id: "exit_loading_dock",
+        label: "LOADING DOCK",
+        viewpointId: "bay_main",
+        anchor: floorAnchor(0.78, 0.68, 0.05),
+        blockedAtSurgeFt: 3,
+        source: "annotation: SIDE LOADING DOCK · SECONDARY EGRESS",
+      },
+      {
+        id: "exit_side_north",
+        label: "NORTH SIDE EGRESS",
+        viewpointId: "side_north",
+        anchor: floorAnchor(0.9, 0.46, 0.06),
+        blockedAtSurgeFt: 6,
+        source: "annotation: PERSONNEL DOOR · RAISED THRESHOLD",
+      },
+      {
+        id: "exit_dock_threshold",
+        label: "DOCK THRESHOLD",
+        viewpointId: "dock_threshold",
+        anchor: floorAnchor(0.44, 0.18, 0.04),
+        blockedAtSurgeFt: 3,
+        source: "annotation: REAR THRESHOLD · LOW GRADE",
+      },
+      {
+        id: "exit_assembly_street",
+        label: "ASSEMBLY · STREET",
+        viewpointId: "street_assembly",
+        anchor: floorAnchor(0.5, 0.08, 0.03),
+        blockedAtSurgeFt: null,
+        source: "annotation: NW 26TH ST · EVAC ASSEMBLY POINT",
+      },
+    ],
+    routes: [
+      {
+        id: "primary_to_street",
+        label: "PRIMARY · BAY TO STREET",
+        waypointViewpoints: [
+          "bay_entrance",
+          "bay_main",
+          "bay_center",
+          "bay_rear",
+          "dock_threshold",
+          "street_assembly",
+        ],
+        targetExitId: "exit_assembly_street",
+        source: "walkthrough_navigation",
+      },
+      {
+        id: "alternate_side",
+        label: "ALTERNATE · NORTH SIDE EGRESS",
+        waypointViewpoints: ["bay_center", "side_north"],
+        targetExitId: "exit_side_north",
+        source: "walkthrough_navigation",
+      },
+      {
+        id: "staging_dock",
+        label: "STAGING · LOADING DOCK",
+        waypointViewpoints: ["bay_entrance", "bay_main"],
+        targetExitId: "exit_loading_dock",
+        source: "walkthrough_navigation",
+      },
+    ],
+  },
   [BUILDING_A_ID]: {
     calibrationSource:
       "LiDAR walkthrough graph · Miami Senior High hall capture · 6 viewpoints",
