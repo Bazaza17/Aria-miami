@@ -155,7 +155,38 @@ body {
   outline: none;
 }
 
-/* 3D scan hazard pins (CSS2D labels tracked to mesh anchors) */
+/* 3D scan evac exit labels */
+.scan-evac-exit-label {
+  pointer-events: none;
+  transform: translate(-50%, -140%);
+  padding: 3px 7px;
+  border-radius: 3px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  background: rgba(0, 0, 0, 0.88);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: rgba(134, 239, 172, 0.95);
+  white-space: nowrap;
+  backdrop-filter: blur(6px);
+}
+
+.scan-evac-exit-label[data-blocked="true"] {
+  border-color: rgba(239, 68, 68, 0.45);
+  color: rgba(252, 165, 165, 0.95);
+  animation: scanEvacBlockedPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes scanEvacBlockedPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
 .scan-hazard-pin {
   pointer-events: none;
   user-select: none;

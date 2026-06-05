@@ -7,6 +7,7 @@ import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRe
 import { USDZLoader } from "three/examples/jsm/loaders/USDZLoader.js";
 
 import { useAgentRun } from "@/components/agent/AgentRunProvider";
+import { useScenario } from "@/components/walkthrough/ScenarioProvider";
 import {
   anchorToWorld,
   createPinElement,
@@ -16,8 +17,24 @@ import {
   type HazardFilter,
   type ScanHazardPin,
 } from "@/lib/scan-hazard-pins";
+import {
+  hasEvacPlan,
+  openExitCount,
+  resolveEvacPlan,
+} from "@/lib/scan-evac-paths";
+import { hasFloodProfile, waterSurfaceNy } from "@/lib/scan-flood";
 
 import { HazardPinFilter } from "./HazardPinFilter";
+import { ScanViewToolbar } from "./ScanViewToolbar";
+import {
+  buildEvacLayer,
+  buildFloodLayer,
+  lerpFloodY,
+  type EvacLayerObjects,
+  type FloodLayerObjects,
+} from "./scanSceneLayers";
+
+export type ScanViewMode = "default" | "evac" | "hazards";
 
 const SCANS: Record<string, string> = {
   "014b39a9-09b8-432b-9b62-363e06383d1f": "/scans/building_a/scan.usdz",
@@ -39,6 +56,8 @@ type SceneBundle = {
   labelRenderer: CSS2DRenderer;
   controls: OrbitControls;
   pinRoot: THREE.Group;
+  evacRoot: THREE.Group;
+  floodRoot: THREE.Group;
   meshSize: THREE.Vector3;
   dispose: () => void;
 };
@@ -48,9 +67,14 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneBundle | null>(null);
   const pinObjectsRef = useRef<THREE.Object3D[]>([]);
+  const evacLayerRef = useRef<EvacLayerObjects | null>(null);
+  const floodLayerRef = useRef<FloodLayerObjects | null>(null);
   const animatedPinIdsRef = useRef(new Set<string>());
+  const viewModeRef = useRef<ScanViewMode>("default");
+  const waterNyRef = useRef<number | null>(null);
 
   const { report, running } = useAgentRun();
+  const { surge } = useScenario();
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [interacted, setInteracted] = useState(false);
@@ -58,6 +82,9 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
   const [hazardFilter, setHazardFilter] = useState<HazardFilter>("all");
   const [revealedCount, setRevealedCount] = useState(0);
   const [indexing, setIndexing] = useState(false);
+  const [viewMode, setViewMode] = useState<ScanViewMode>("default");
+
+  viewModeRef.current = viewMode;
 
   const allPins = useMemo(
     () => (report ? pinsFromReport(report, buildingId) : []),
@@ -69,7 +96,23 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
     [allPins, hazardFilter],
   );
 
-  // Stagger pin reveal when the agent report lands.
+  const evacPlan = useMemo(() => {
+    if (!loaded || !hasEvacPlan(buildingId) || !sceneRef.current) return null;
+    const size = sceneRef.current.meshSize;
+    return resolveEvacPlan(buildingId, surge, {
+      x: size.x,
+      y: size.y,
+      z: size.z,
+    });
+  }, [buildingId, surge, loaded]);
+
+  const waterNy = useMemo(
+    () => (hasFloodProfile(buildingId) ? waterSurfaceNy(buildingId, surge) : null),
+    [buildingId, surge],
+  );
+
+  waterNyRef.current = waterNy;
+
   useEffect(() => {
     if (!report || allPins.length === 0) {
       setRevealedCount(0);
@@ -99,7 +142,6 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
     return () => window.clearInterval(interval);
   }, [report, allPins.length]);
 
-  // Three.js scene bootstrap.
   useEffect(() => {
     if (!scanUrl) return;
     const mount = mountRef.current;
@@ -151,7 +193,9 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
       });
 
       const pinRoot = new THREE.Group();
-      scene.add(pinRoot);
+      const evacRoot = new THREE.Group();
+      const floodRoot = new THREE.Group();
+      scene.add(floodRoot, evacRoot, pinRoot);
 
       const loader = new USDZLoader();
       try {
@@ -199,13 +243,19 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
           labelRenderer,
           controls,
           pinRoot,
+          evacRoot,
+          floodRoot,
           meshSize: size.clone(),
           dispose: () => {
             cancelAnimationFrame(raf);
             ro.disconnect();
+            evacLayerRef.current?.dispose();
+            floodLayerRef.current?.dispose();
             controls.dispose();
             renderer.dispose();
             pinRoot.clear();
+            evacRoot.clear();
+            floodRoot.clear();
             scene.clear();
             if (renderer.domElement.parentNode === mount) {
               mount.removeChild(renderer.domElement);
@@ -242,6 +292,23 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
 
       const tick = () => {
         controls.update();
+        if (
+          floodLayerRef.current &&
+          waterNyRef.current !== null &&
+          viewModeRef.current === "evac" &&
+          sceneRef.current
+        ) {
+          lerpFloodY(
+            floodLayerRef.current.mesh,
+            waterNyRef.current,
+            {
+              x: sceneRef.current.meshSize.x,
+              y: sceneRef.current.meshSize.y,
+              z: sceneRef.current.meshSize.z,
+            },
+            0.12,
+          );
+        }
         renderer.render(scene, camera);
         labelRenderer.render(scene, camera);
         raf = requestAnimationFrame(tick);
@@ -259,11 +326,66 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
       cancelAnimationFrame(raf);
       cleanupScene?.();
       pinObjectsRef.current = [];
+      evacLayerRef.current = null;
+      floodLayerRef.current = null;
       while (mount.firstChild) mount.removeChild(mount.firstChild);
     };
   }, [scanUrl]);
 
-  // Sync hazard pins onto the mesh whenever report, filter, or reveal changes.
+  // Evac routes + exit markers
+  useEffect(() => {
+    const bundle = sceneRef.current;
+    if (!bundle || !loaded || viewMode !== "evac") {
+      evacLayerRef.current?.dispose();
+      evacLayerRef.current = null;
+      bundle?.evacRoot.clear();
+      return;
+    }
+
+    const plan = resolveEvacPlan(buildingId, surge, {
+      x: bundle.meshSize.x,
+      y: bundle.meshSize.y,
+      z: bundle.meshSize.z,
+    });
+    if (!plan) return;
+
+    evacLayerRef.current?.dispose();
+    bundle.evacRoot.clear();
+
+    const layer = buildEvacLayer(plan.routes, plan.exits, {
+      x: bundle.meshSize.x,
+      y: bundle.meshSize.y,
+      z: bundle.meshSize.z,
+    });
+    bundle.evacRoot.add(layer.group);
+    evacLayerRef.current = layer;
+  }, [buildingId, surge, loaded, viewMode]);
+
+  // Flood water plane (evac mode + surge > 0)
+  useEffect(() => {
+    const bundle = sceneRef.current;
+    if (!bundle || !loaded || viewMode !== "evac") {
+      floodLayerRef.current?.dispose();
+      floodLayerRef.current = null;
+      bundle?.floodRoot.clear();
+      return;
+    }
+
+    floodLayerRef.current?.dispose();
+    bundle.floodRoot.clear();
+
+    if (waterNy === null) return;
+
+    const layer = buildFloodLayer(waterNy, {
+      x: bundle.meshSize.x,
+      y: bundle.meshSize.y,
+      z: bundle.meshSize.z,
+    });
+    bundle.floodRoot.add(layer.mesh);
+    floodLayerRef.current = layer;
+  }, [buildingId, surge, waterNy, loaded, viewMode]);
+
+  // Hazard pins (hazards mode only)
   useEffect(() => {
     const bundle = sceneRef.current;
     if (!bundle || !loaded) return;
@@ -274,7 +396,7 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
     }
     pinObjectsRef.current = [];
 
-    if (!report || allPins.length === 0) return;
+    if (viewMode !== "hazards" || !report || allPins.length === 0) return;
 
     const revealedIds = new Set(
       allPins.slice(0, revealedCount).map((p) => p.id),
@@ -302,14 +424,17 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
       bundle.pinRoot.add(pinGroup);
       pinObjectsRef.current.push(pinGroup);
     });
-  }, [loaded, report, allPins, visiblePins, revealedCount]);
+  }, [loaded, report, allPins, visiblePins, revealedCount, viewMode]);
 
   const pinBadge =
-    allPins.length > 0
+    allPins.length > 0 && viewMode === "hazards"
       ? `${allPins.length} HAZARD PIN${allPins.length === 1 ? "" : "S"}`
       : running
         ? "AGENT RUNNING"
         : null;
+
+  const evacOpen = evacPlan ? openExitCount(evacPlan) : 0;
+  const evacTotal = evacPlan?.exits.length ?? 0;
 
   return (
     <section className="relative flex h-full flex-col gap-2 bg-[#0a0a0a] p-3">
@@ -328,6 +453,11 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
               }
             >
               {pinBadge}
+            </span>
+          )}
+          {viewMode === "evac" && evacPlan && (
+            <span className="text-emerald-300/90">
+              EVAC · {evacOpen}/{evacTotal} OPEN
             </span>
           )}
           <span className="text-white/30">
@@ -357,7 +487,18 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
           </div>
         )}
 
-        {loaded && !failed && allPins.length > 0 && (
+        {loaded && !failed && (
+          <ScanViewToolbar
+            mode={viewMode}
+            onModeChange={setViewMode}
+            buildingId={buildingId}
+            evacOpenCount={evacOpen}
+            evacTotal={evacTotal}
+            surgeActive={surge > 0}
+          />
+        )}
+
+        {loaded && !failed && viewMode === "hazards" && allPins.length > 0 && (
           <HazardPinFilter
             filter={hazardFilter}
             onFilterChange={setHazardFilter}
@@ -369,8 +510,10 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
         {loaded && !failed && (
           <ScanMetadata
             vertexCount={vertexCount}
-            pinCount={allPins.length}
+            pinCount={viewMode === "hazards" ? allPins.length : 0}
             revealedCount={revealedCount}
+            evacPlan={viewMode === "evac" ? evacPlan : null}
+            surge={surge}
           />
         )}
 
@@ -402,8 +545,7 @@ function buildPinObject(
     transparent: true,
     opacity: 0.95,
   });
-  const dot = new THREE.Mesh(dotGeo, dotMat);
-  group.add(dot);
+  group.add(new THREE.Mesh(dotGeo, dotMat));
 
   const ringGeo = new THREE.RingGeometry(
     markerScale * 1.5,
@@ -428,7 +570,6 @@ function buildPinObject(
   label.position.set(0, markerScale * 5, 0);
   group.add(label);
 
-  group.userData = { pinId: pin.id, dotMat, ringMat, labelEl };
   return group;
 }
 
@@ -458,10 +599,14 @@ function ScanMetadata({
   vertexCount,
   pinCount,
   revealedCount,
+  evacPlan,
+  surge,
 }: {
   vertexCount: number | null;
   pinCount: number;
   revealedCount: number;
+  evacPlan: ReturnType<typeof resolveEvacPlan> | null;
+  surge: number;
 }) {
   const vertsLabel = vertexCount
     ? vertexCount >= 1_000_000
@@ -470,7 +615,7 @@ function ScanMetadata({
     : "180K VERTICES";
 
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-white/[0.08] bg-black/70 px-3 py-2 font-mono text-[10px] leading-relaxed backdrop-blur">
+    <div className="pointer-events-none absolute bottom-3 left-3 max-w-[280px] rounded-md border border-white/[0.08] bg-black/70 px-3 py-2 font-mono text-[10px] leading-relaxed backdrop-blur">
       <Row label="CAPTURE" value="PHONE LIDAR · 5 MIN" />
       <Row label="MESH" value={vertsLabel} />
       {pinCount > 0 && (
@@ -478,6 +623,15 @@ function ScanMetadata({
           label="HAZARDS"
           value={`${Math.min(revealedCount, pinCount)}/${pinCount} INDEXED`}
         />
+      )}
+      {evacPlan && (
+        <>
+          <Row
+            label="EVAC"
+            value={`${openExitCount(evacPlan)}/${evacPlan.exits.length} EXITS`}
+          />
+          {surge > 0 && <Row label="SURGE" value={`${surge} FT · WATER ACTIVE`} />}
+        </>
       )}
       <Row label="ACCURACY" value="±5CM" />
     </div>

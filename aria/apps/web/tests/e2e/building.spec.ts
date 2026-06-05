@@ -38,6 +38,25 @@ test.describe("Building page", () => {
     await scanTab.click();
     await expect(scanTab).toHaveAttribute("aria-pressed", "true");
 
+    // Evac paths mode — calibrated to walkthrough graph
+    await page.getByRole("button", { name: "EVAC", exact: true }).click();
+    await expect(page.getByText(/\d+\/\d+ EXITS OPEN/)).toBeVisible();
+    await expect(page.getByText(/EVAC · \d+\/\d+ OPEN/)).toBeVisible();
+
+    // Surge to 1FT — grade exits block, count drops
+    const surgeSlider = page.locator('input[type="range"]').first();
+    await surgeSlider.evaluate((el: HTMLInputElement) => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(el, "1");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await expect(page.getByText(/SURGE.*1 FT · WATER ACTIVE/)).toBeVisible({
+      timeout: 10_000,
+    });
+
     // ─── Agent run ────────────────────────────────────────────────────────
     const runBtn = page.getByRole("button", { name: "RUN PRE-PLAN AGENT" });
     await expect(runBtn).toBeVisible();
@@ -54,6 +73,7 @@ test.describe("Building page", () => {
 
     // Hazard pins index onto the 3D scan after the agent completes
     await scanTab.click();
+    await page.getByRole("button", { name: "HAZARDS", exact: true }).click();
     await expect(page.getByText(/\d+ HAZARD PIN/)).toBeVisible({
       timeout: 15_000,
     });
@@ -118,7 +138,6 @@ test.describe("Building page", () => {
     await expect(page.getByText(/CURRENT:\s*DRY/i)).toBeVisible();
 
     // Drag the surge slider to index 3 (6FT) and confirm the label updates
-    const surgeSlider = page.locator('input[type="range"]').first();
     await surgeSlider.evaluate((el: HTMLInputElement) => {
       const setter = Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
