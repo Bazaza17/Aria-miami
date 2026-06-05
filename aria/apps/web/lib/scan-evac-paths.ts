@@ -57,14 +57,16 @@ const THE_DOCK_ID = "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1";
  * bay door; nz ≈ 0.08 is the far end / outdoor assembly.
  */
 const VIEWPOINT_ANCHORS: Record<string, Record<string, NormalizedAnchor>> = {
+  // Calibrated to the scan's main floor footprint (nx 0.08–0.6, nz 0.1–0.6).
+  // Approximate until the walkthrough photos pin exact door positions.
   [THE_DOCK_ID]: {
-    bay_entrance: floorAnchor(0.5, 0.85, 0.06),
-    bay_main: floorAnchor(0.5, 0.68, 0.07),
-    bay_center: floorAnchor(0.5, 0.5, 0.07),
-    bay_rear: floorAnchor(0.52, 0.32, 0.07),
-    side_north: floorAnchor(0.9, 0.46, 0.06),
-    dock_threshold: floorAnchor(0.44, 0.18, 0.05),
-    street_assembly: floorAnchor(0.5, 0.08, 0.04),
+    bay_entrance: floorAnchor(0.45, 0.12, 0.05),
+    bay_main: floorAnchor(0.4, 0.26, 0.05),
+    bay_center: floorAnchor(0.35, 0.4, 0.05),
+    bay_rear: floorAnchor(0.3, 0.54, 0.05),
+    side_north: floorAnchor(0.12, 0.42, 0.05),
+    dock_threshold: floorAnchor(0.28, 0.66, 0.05),
+    street_assembly: floorAnchor(0.3, 0.9, 0.04),
   },
   [BUILDING_A_ID]: {
     hall_start: floorAnchor(0.46, 0.76, 0.09),
@@ -103,7 +105,7 @@ const EVAC_DATA: Record<
         id: "exit_main_bay",
         label: "MAIN BAY DOOR",
         viewpointId: "bay_entrance",
-        anchor: floorAnchor(0.5, 0.85, 0.05),
+        anchor: floorAnchor(0.45, 0.12, 0.05),
         blockedAtSurgeFt: 1,
         source: "annotation: GRADE-LEVEL ROLL-UP · SURGE ENTRY",
       },
@@ -111,7 +113,7 @@ const EVAC_DATA: Record<
         id: "exit_loading_dock",
         label: "LOADING DOCK",
         viewpointId: "bay_main",
-        anchor: floorAnchor(0.78, 0.68, 0.05),
+        anchor: floorAnchor(0.58, 0.3, 0.05),
         blockedAtSurgeFt: 3,
         source: "annotation: SIDE LOADING DOCK · SECONDARY EGRESS",
       },
@@ -119,7 +121,7 @@ const EVAC_DATA: Record<
         id: "exit_side_north",
         label: "NORTH SIDE EGRESS",
         viewpointId: "side_north",
-        anchor: floorAnchor(0.9, 0.46, 0.06),
+        anchor: floorAnchor(0.1, 0.42, 0.05),
         blockedAtSurgeFt: 6,
         source: "annotation: PERSONNEL DOOR · RAISED THRESHOLD",
       },
@@ -127,7 +129,7 @@ const EVAC_DATA: Record<
         id: "exit_dock_threshold",
         label: "DOCK THRESHOLD",
         viewpointId: "dock_threshold",
-        anchor: floorAnchor(0.44, 0.18, 0.04),
+        anchor: floorAnchor(0.28, 0.66, 0.05),
         blockedAtSurgeFt: 3,
         source: "annotation: REAR THRESHOLD · LOW GRADE",
       },
@@ -135,7 +137,7 @@ const EVAC_DATA: Record<
         id: "exit_assembly_street",
         label: "ASSEMBLY · STREET",
         viewpointId: "street_assembly",
-        anchor: floorAnchor(0.5, 0.08, 0.03),
+        anchor: floorAnchor(0.3, 0.9, 0.04),
         blockedAtSurgeFt: null,
         source: "annotation: NW 26TH ST · EVAC ASSEMBLY POINT",
       },

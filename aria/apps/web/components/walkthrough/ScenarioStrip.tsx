@@ -24,15 +24,18 @@ export function ScenarioStrip({
   wind,
   onSurgeChange,
   onWindChange,
+  hideWind = false,
 }: {
   surge: SurgeValue;
   wind: WindValue;
   onSurgeChange: (v: SurgeValue) => void;
   onWindChange: (v: WindValue) => void;
+  /** The 3D scan only reacts to surge (flood plane), so hide the wind row. */
+  hideWind?: boolean;
 }) {
   const surgeIdx = SURGE_STOPS.findIndex((s) => s.value === surge);
   const windIdx = WIND_STOPS.findIndex((s) => s.value === wind);
-  const label = scenarioLabel(surge, wind);
+  const label = hideWind ? scenarioLabel(surge, 0) : scenarioLabel(surge, wind);
   const sRisk = surgeRisk(surge);
   const wRisk = windRisk(wind);
 
@@ -54,14 +57,16 @@ export function ScenarioStrip({
         risk={sRisk}
       />
 
-      <SliderRow
-        label="HURRICANE WIND"
-        stops={WIND_STOPS}
-        idx={windIdx}
-        onChange={(i) => onWindChange(WIND_STOPS[i].value)}
-        currentLabel={WIND_STOPS[windIdx].label}
-        risk={wRisk}
-      />
+      {!hideWind && (
+        <SliderRow
+          label="HURRICANE WIND"
+          stops={WIND_STOPS}
+          idx={windIdx}
+          onChange={(i) => onWindChange(WIND_STOPS[i].value)}
+          currentLabel={WIND_STOPS[windIdx].label}
+          risk={wRisk}
+        />
+      )}
     </div>
   );
 }

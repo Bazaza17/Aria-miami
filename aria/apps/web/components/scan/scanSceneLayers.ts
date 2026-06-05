@@ -23,6 +23,7 @@ export function buildEvacLayer(
 ): EvacLayerObjects {
   const group = new THREE.Group();
   const disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
+  const labelEls: HTMLElement[] = [];
 
   for (const route of routes) {
     if (route.points.length < 2) continue;
@@ -99,6 +100,7 @@ export function buildEvacLayer(
     const label = new CSS2DObject(labelEl);
     label.position.set(0, markerScale * 6, 0);
     exitGroup.add(label);
+    labelEls.push(labelEl);
 
     group.add(exitGroup);
   }
@@ -107,6 +109,10 @@ export function buildEvacLayer(
     group,
     dispose: () => {
       for (const d of disposables) d.dispose();
+      // CSS2D labels are DOM nodes appended by the renderer — removing the
+      // Object3D doesn't remove the element, so clear them explicitly or they
+      // pile up every time the layer is rebuilt (e.g. on surge change).
+      for (const el of labelEls) el.remove();
       group.clear();
     },
   };

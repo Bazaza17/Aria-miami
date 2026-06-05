@@ -67,6 +67,7 @@ function BuildingCenterPaneInner({
         wind={wind}
         onSurgeChange={setSurge}
         onWindChange={setWind}
+        hideWind={tab === "scan"}
       />
     </div>
   );

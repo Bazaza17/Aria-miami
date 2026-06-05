@@ -27,12 +27,12 @@ const THE_DOCK_ID = "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1";
 /** Building-specific anchor presets (tuned to each LiDAR capture orientation). */
 const BUILDING_SLOTS: Record<string, Record<string, NormalizedAnchor>> = {
   [THE_DOCK_ID]: {
-    roof: { nx: 0.5, ny: 0.95, nz: 0.5 },
-    hvac: { nx: 0.62, ny: 0.9, nz: 0.36 },
-    ground_egress: { nx: 0.5, ny: 0.06, nz: 0.85 },
-    glass_facade: { nx: 0.5, ny: 0.4, nz: 0.88 },
-    interior: { nx: 0.5, ny: 0.45, nz: 0.5 },
-    open_court: { nx: 0.5, ny: 0.06, nz: 0.08 },
+    roof: { nx: 0.35, ny: 0.9, nz: 0.35 },
+    hvac: { nx: 0.5, ny: 0.85, nz: 0.45 },
+    ground_egress: { nx: 0.45, ny: 0.06, nz: 0.12 },
+    glass_facade: { nx: 0.45, ny: 0.4, nz: 0.1 },
+    interior: { nx: 0.35, ny: 0.4, nz: 0.4 },
+    open_court: { nx: 0.3, ny: 0.06, nz: 0.9 },
   },
   [BUILDING_A_ID]: {
     roof: { nx: 0.52, ny: 0.94, nz: 0.48 },
