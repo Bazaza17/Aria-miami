@@ -12,7 +12,7 @@ values (
   '400 NW 26th St, Miami, FL 33127',
   25.801267443503537,
   -80.20217163896397,
-  '/scans/the_dock/scan.usdz',
+  'https://vsykrzfyvhnrwjyleywl.supabase.co/storage/v1/object/public/scans/the_dock/scan.usdz',
   true
 )
 on conflict (id) do update set
