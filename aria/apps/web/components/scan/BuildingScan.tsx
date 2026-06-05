@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { USDZLoader } from "three/examples/jsm/loaders/USDZLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 import { useAgentRun } from "@/components/agent/AgentRunProvider";
 import { useScenario } from "@/components/walkthrough/ScenarioProvider";
@@ -36,14 +37,16 @@ import {
 
 export type ScanViewMode = "default" | "evac" | "hazards";
 
-// The Dock's mesh is served from Supabase Storage (the 128 MB USDZ exceeds
-// GitHub's blob limit and Vercel doesn't serve Git LFS files at the static
-// path). The legacy buildings keep their local public/ paths.
+// The Dock's mesh is served from Supabase Storage as a decimated GLB. The raw
+// Polycam USDZ (1.5M faces / 105 MB of ASCII geometry) took ~60s to parse and
+// froze the browser, so it was simplified to ~190k faces with WebP textures
+// (~7 MB) and converted to glTF, which loads near-instantly. The legacy
+// buildings keep their local public/ USDZ paths.
 const SCANS: Record<string, string> = {
   "014b39a9-09b8-432b-9b62-363e06383d1f": "/scans/building_a/scan.usdz",
   "870d979d-6eaf-4d7f-894a-8ca34e527237": "/scans/building_b/scan.usdz",
   "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1":
-    "https://vsykrzfyvhnrwjyleywl.supabase.co/storage/v1/object/public/scans/the_dock/scan.usdz",
+    "https://vsykrzfyvhnrwjyleywl.supabase.co/storage/v1/object/public/scans/the_dock/scan.glb",
 };
 
 const PIN_REVEAL_MS = 180;
@@ -210,9 +213,11 @@ export function BuildingScan({
       const floodRoot = new THREE.Group();
       scene.add(floodRoot, evacRoot, pinRoot);
 
-      const loader = new USDZLoader();
+      const isGltf = /\.(glb|gltf)(\?|$)/i.test(scanUrl);
       try {
-        const group = await loader.loadAsync(scanUrl);
+        const group = isGltf
+          ? (await new GLTFLoader().loadAsync(scanUrl)).scene
+          : await new USDZLoader().loadAsync(scanUrl);
         if (cancelled) return;
 
         const box = new THREE.Box3().setFromObject(group);
