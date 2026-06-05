@@ -55,7 +55,10 @@ export default async function BuildingPage({
       <AgentRunProvider address={building.address} buildingId={building.id}>
         <section className="grid min-h-0 flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] lg:grid-rows-[1fr]">
           <AgentLogPane />
-          <BuildingCenterPane buildingId={building.id} />
+          <BuildingCenterPane
+            buildingId={building.id}
+            scanUrl={building.scan_url}
+          />
           <PreplanReportPanel />
         </section>
       </AgentRunProvider>

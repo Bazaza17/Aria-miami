@@ -125,7 +125,7 @@ function makeRouteLine(
     color,
     transparent: true,
     opacity,
-    linewidth: 2,
+    linewidth: 3,
   });
   return new THREE.Line(geo, mat);
 }

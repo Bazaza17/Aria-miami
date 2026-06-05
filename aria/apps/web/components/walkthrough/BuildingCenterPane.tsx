@@ -10,15 +10,27 @@ import { WALKTHROUGHS } from "@/lib/walkthrough-data";
 
 type Tab = "scan" | "walkthrough";
 
-export function BuildingCenterPane({ buildingId }: { buildingId: string }) {
+export function BuildingCenterPane({
+  buildingId,
+  scanUrl,
+}: {
+  buildingId: string;
+  scanUrl?: string | null;
+}) {
   return (
     <ScenarioProvider>
-      <BuildingCenterPaneInner buildingId={buildingId} />
+      <BuildingCenterPaneInner buildingId={buildingId} scanUrl={scanUrl} />
     </ScenarioProvider>
   );
 }
 
-function BuildingCenterPaneInner({ buildingId }: { buildingId: string }) {
+function BuildingCenterPaneInner({
+  buildingId,
+  scanUrl,
+}: {
+  buildingId: string;
+  scanUrl?: string | null;
+}) {
   const [tab, setTab] = useState<Tab>("scan");
   const walk = WALKTHROUGHS[buildingId];
   const viewpointCount = walk ? Object.keys(walk.viewpoints).length : 0;
@@ -43,7 +55,7 @@ function BuildingCenterPaneInner({ buildingId }: { buildingId: string }) {
 
       <div className="relative min-h-0 flex-1">
         <TabPanel active={tab === "scan"}>
-          <BuildingScan buildingId={buildingId} />
+          <BuildingScan buildingId={buildingId} scanUrl={scanUrl} />
         </TabPanel>
         <TabPanel active={tab === "walkthrough"}>
           <WalkthroughViewer buildingId={buildingId} />

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const BUILDING_A = "014b39a9-09b8-432b-9b62-363e06383d1f";
+const THE_DOCK = "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1";
 
 test.describe("Building page", () => {
   test("tabs · agent run · actions · fullscreen · walkthrough polish", async ({
@@ -11,7 +11,7 @@ test.describe("Building page", () => {
       if (msg.type() === "error") console.log("[console.error]", msg.text());
     });
 
-    await page.goto(`/building/${BUILDING_A}`);
+    await page.goto(`/building/${THE_DOCK}`);
 
     // ─── Tabs ─────────────────────────────────────────────────────────────
     const scanTab = page.getByRole("button", { name: /3D SCAN/ });

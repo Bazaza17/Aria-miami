@@ -63,8 +63,14 @@ type SceneBundle = {
   dispose: () => void;
 };
 
-export function BuildingScan({ buildingId }: { buildingId: string }) {
-  const scanUrl = SCANS[buildingId];
+export function BuildingScan({
+  buildingId,
+  scanUrl: scanUrlProp,
+}: {
+  buildingId: string;
+  scanUrl?: string | null;
+}) {
+  const scanUrl = scanUrlProp ?? SCANS[buildingId] ?? null;
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneBundle | null>(null);
   const pinObjectsRef = useRef<THREE.Object3D[]>([]);
@@ -83,7 +89,9 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
   const [hazardFilter, setHazardFilter] = useState<HazardFilter>("all");
   const [revealedCount, setRevealedCount] = useState(0);
   const [indexing, setIndexing] = useState(false);
-  const [viewMode, setViewMode] = useState<ScanViewMode>("default");
+  const [viewMode, setViewMode] = useState<ScanViewMode>(() =>
+    hasEvacPlan(buildingId) ? "evac" : "default",
+  );
 
   viewModeRef.current = viewMode;
 
@@ -436,6 +444,25 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
 
   const evacOpen = evacPlan ? openExitCount(evacPlan) : 0;
   const evacTotal = evacPlan?.exits.length ?? 0;
+
+  if (!scanUrl) {
+    return (
+      <section className="relative flex h-full flex-col gap-2 bg-[#0a0a0a] p-3">
+        <div className="flex flex-1 items-center justify-center rounded-sm border border-red-500/30 bg-black/60 p-6 text-center font-mono text-[10px] leading-relaxed tracking-[0.2em]">
+          <div>
+            <p className="text-red-300/90">NO LIDAR SCAN · WRONG BUILDING ID</p>
+            <p className="mt-3 text-white/40">
+              git pull origin main
+              <br />
+              run infra/supabase/migrations/0003_the_dock.sql
+              <br />
+              open The Dock from dashboard
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="relative flex h-full flex-col gap-2 bg-[#0a0a0a] p-3">
