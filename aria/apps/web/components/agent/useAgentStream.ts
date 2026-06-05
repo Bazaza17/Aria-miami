@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import type { AgentEvent, PreplanReport, ScenarioParams } from "@/lib/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 export type AgentRunMode = "auto" | "cached" | "live";
 export type AgentRunSource = "cached" | "live" | null;
