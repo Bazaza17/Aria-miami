@@ -344,6 +344,11 @@ export function MapDashboard({
                 ×
               </button>
             </div>
+            {popover.building && (
+              <div className="mb-1 font-mono text-xs font-semibold tracking-[0.2em] text-[#ff6b00]">
+                THE DOCK
+              </div>
+            )}
             <div className="mb-4 text-sm font-medium leading-snug text-white">
               {popover.building?.address ?? "UNKNOWN STRUCTURE"}
             </div>
