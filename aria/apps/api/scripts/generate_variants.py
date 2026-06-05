@@ -40,9 +40,9 @@ _client = genai.Client(api_key=API_KEY)
 
 MODEL_ID = "gemini-2.5-flash-image"
 WEB_SCANS = (ROOT / ".." / "web" / "public" / "scans").resolve()
-BUILDINGS = ["building_a", "building_b"]
+BUILDINGS = ["building_a", "building_b", "the_dock"]
 PHOTO_SUFFIXES = (".jpg", ".jpeg", ".png")
-EXTERIOR_KEYWORDS = ("outside", "exterior", "play", "backofhall")
+EXTERIOR_KEYWORDS = ("outside", "exterior", "play", "backofhall", "back_")
 COST_PER_IMAGE = 0.04  # USD, approximate
 RATE_LIMIT_SECONDS = 1.0
 
