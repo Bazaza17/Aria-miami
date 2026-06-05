@@ -52,6 +52,21 @@ test.describe("Building page", () => {
       page.locator("aside").getByText("COMPLETE", { exact: true }),
     ).toBeVisible();
 
+    // Hazard pins index onto the 3D scan after the agent completes
+    await scanTab.click();
+    await expect(page.getByText(/\d+ HAZARD PIN/)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByRole("group", { name: "Filter hazard pins" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^WIND\b/ }),
+    ).toBeVisible();
+    await expect(page.getByText(/\d+\/\d+ INDEXED/)).toBeVisible({
+      timeout: 30_000,
+    });
+
     // ─── Actions panel ────────────────────────────────────────────────────
     const actionsSection = page
       .locator("section")

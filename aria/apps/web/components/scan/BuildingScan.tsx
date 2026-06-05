@@ -1,24 +1,105 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { USDZLoader } from "three/examples/jsm/loaders/USDZLoader.js";
 
-// Seeded UUID → public USDZ path. Add new buildings here as scans land.
+import { useAgentRun } from "@/components/agent/AgentRunProvider";
+import {
+  anchorToWorld,
+  createPinElement,
+  filterPins,
+  hazardPinCounts,
+  pinsFromReport,
+  type HazardFilter,
+  type ScanHazardPin,
+} from "@/lib/scan-hazard-pins";
+
+import { HazardPinFilter } from "./HazardPinFilter";
+
 const SCANS: Record<string, string> = {
   "014b39a9-09b8-432b-9b62-363e06383d1f": "/scans/building_a/scan.usdz",
   "870d979d-6eaf-4d7f-894a-8ca34e527237": "/scans/building_b/scan.usdz",
 };
 
+const PIN_REVEAL_MS = 180;
+const SEVERITY_GLOW: Record<string, number> = {
+  LOW: 0.35,
+  MODERATE: 0.55,
+  HIGH: 0.75,
+  SEVERE: 1,
+};
+
+type SceneBundle = {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  renderer: THREE.WebGLRenderer;
+  labelRenderer: CSS2DRenderer;
+  controls: OrbitControls;
+  pinRoot: THREE.Group;
+  meshSize: THREE.Vector3;
+  dispose: () => void;
+};
+
 export function BuildingScan({ buildingId }: { buildingId: string }) {
   const scanUrl = SCANS[buildingId];
   const mountRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<SceneBundle | null>(null);
+  const pinObjectsRef = useRef<THREE.Object3D[]>([]);
+  const animatedPinIdsRef = useRef(new Set<string>());
+
+  const { report, running } = useAgentRun();
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [interacted, setInteracted] = useState(false);
   const [vertexCount, setVertexCount] = useState<number | null>(null);
+  const [hazardFilter, setHazardFilter] = useState<HazardFilter>("all");
+  const [revealedCount, setRevealedCount] = useState(0);
+  const [indexing, setIndexing] = useState(false);
 
+  const allPins = useMemo(
+    () => (report ? pinsFromReport(report, buildingId) : []),
+    [report, buildingId],
+  );
+  const pinCounts = useMemo(() => hazardPinCounts(allPins), [allPins]);
+  const visiblePins = useMemo(
+    () => filterPins(allPins, hazardFilter),
+    [allPins, hazardFilter],
+  );
+
+  // Stagger pin reveal when the agent report lands.
+  useEffect(() => {
+    if (!report || allPins.length === 0) {
+      setRevealedCount(0);
+      setIndexing(false);
+      return;
+    }
+
+    animatedPinIdsRef.current = new Set();
+    setIndexing(true);
+    setRevealedCount(allPins.length > 0 ? 1 : 0);
+
+    if (allPins.length <= 1) {
+      setIndexing(false);
+      return;
+    }
+
+    let count = 1;
+    const interval = window.setInterval(() => {
+      count += 1;
+      setRevealedCount(count);
+      if (count >= allPins.length) {
+        setIndexing(false);
+        window.clearInterval(interval);
+      }
+    }, PIN_REVEAL_MS);
+
+    return () => window.clearInterval(interval);
+  }, [report, allPins.length]);
+
+  // Three.js scene bootstrap.
   useEffect(() => {
     if (!scanUrl) return;
     const mount = mountRef.current;
@@ -26,23 +107,17 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
 
     let cancelled = false;
     let raf = 0;
+    let cleanupScene: (() => void) | null = null;
 
-    (async () => {
-      if (cancelled) return;
-
+    void (async () => {
       const width = mount.clientWidth || 400;
       const height = mount.clientHeight || 230;
 
       const scene = new THREE.Scene();
-      scene.background = null;
-
       const camera = new THREE.PerspectiveCamera(45, width / height, 0.05, 500);
       camera.position.set(0, 0.4, 2.2);
 
-      const renderer = new THREE.WebGLRenderer({
-        antialias: true,
-        alpha: true,
-      });
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(width, height);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -50,8 +125,14 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
       renderer.toneMappingExposure = 1.0;
       mount.appendChild(renderer.domElement);
 
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x111122, 0.85);
-      scene.add(hemi);
+      const labelRenderer = new CSS2DRenderer();
+      labelRenderer.setSize(width, height);
+      labelRenderer.domElement.style.position = "absolute";
+      labelRenderer.domElement.style.inset = "0";
+      labelRenderer.domElement.style.pointerEvents = "none";
+      mount.appendChild(labelRenderer.domElement);
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x111122, 0.85));
       const key = new THREE.DirectionalLight(0xffffff, 1.2);
       key.position.set(3, 4, 2);
       scene.add(key);
@@ -64,21 +145,19 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
       controls.dampingFactor = 0.08;
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.8;
-      controls.minDistance = 0.4;
-      controls.maxDistance = 8;
       controls.addEventListener("start", () => {
         controls.autoRotate = false;
         setInteracted(true);
       });
+
+      const pinRoot = new THREE.Group();
+      scene.add(pinRoot);
 
       const loader = new USDZLoader();
       try {
         const group = await loader.loadAsync(scanUrl);
         if (cancelled) return;
 
-        // Recenter and fit to view. Distance is computed from the bounding
-        // box, fitted to whichever screen axis is tighter, then placed at a
-        // cinematic 3/4 angle.
         const box = new THREE.Box3().setFromObject(group);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
@@ -90,8 +169,7 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
         const aspect = mount.clientWidth / mount.clientHeight;
         const distH = maxDim / (2 * Math.tan(fov / 2));
         const distW = distH / aspect;
-        const fitOffset = 1.15;
-        const dist = fitOffset * Math.max(distH, distW);
+        const dist = 1.15 * Math.max(distH, distW);
 
         const cinematic = new THREE.Vector3(0.55, 0.4, 1).normalize();
         camera.position.copy(cinematic.multiplyScalar(dist));
@@ -104,21 +182,50 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
         controls.maxDistance = dist * 4;
         controls.update();
 
-        // Real vertex count for the metadata overlay.
         let verts = 0;
-        group.traverse((obj: THREE.Object3D) => {
+        group.traverse((obj) => {
           if ((obj as THREE.Mesh).isMesh) {
-            const geom = (obj as THREE.Mesh).geometry;
-            const attr = geom?.attributes?.position;
+            const attr = (obj as THREE.Mesh).geometry?.attributes?.position;
             if (attr) verts += attr.count;
           }
         });
         setVertexCount(verts);
         setLoaded(true);
+
+        sceneRef.current = {
+          scene,
+          camera,
+          renderer,
+          labelRenderer,
+          controls,
+          pinRoot,
+          meshSize: size.clone(),
+          dispose: () => {
+            cancelAnimationFrame(raf);
+            ro.disconnect();
+            controls.dispose();
+            renderer.dispose();
+            pinRoot.clear();
+            scene.clear();
+            if (renderer.domElement.parentNode === mount) {
+              mount.removeChild(renderer.domElement);
+            }
+            if (labelRenderer.domElement.parentNode === mount) {
+              mount.removeChild(labelRenderer.domElement);
+            }
+          },
+        };
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("[building-scan] USDZ load failed", err);
         if (!cancelled) setFailed(true);
+        renderer.dispose();
+        if (renderer.domElement.parentNode === mount) {
+          mount.removeChild(renderer.domElement);
+        }
+        if (labelRenderer.domElement.parentNode === mount) {
+          mount.removeChild(labelRenderer.domElement);
+        }
+        return;
       }
 
       const onResize = () => {
@@ -128,6 +235,7 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
+        labelRenderer.setSize(w, h);
       };
       const ro = new ResizeObserver(onResize);
       ro.observe(mount);
@@ -135,30 +243,73 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
       const tick = () => {
         controls.update();
         renderer.render(scene, camera);
+        labelRenderer.render(scene, camera);
         raf = requestAnimationFrame(tick);
       };
       tick();
 
-      // cleanup closure
-      return () => {
-        cancelAnimationFrame(raf);
-        ro.disconnect();
-        controls.dispose();
-        renderer.dispose();
-        if (renderer.domElement.parentNode) {
-          renderer.domElement.parentNode.removeChild(renderer.domElement);
-        }
+      cleanupScene = () => {
+        sceneRef.current?.dispose();
+        sceneRef.current = null;
       };
     })();
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
-      // The async init also installs a cleanup; that runs separately via the
-      // closure above. We just stop the loop here.
+      cleanupScene?.();
+      pinObjectsRef.current = [];
       while (mount.firstChild) mount.removeChild(mount.firstChild);
     };
   }, [scanUrl]);
+
+  // Sync hazard pins onto the mesh whenever report, filter, or reveal changes.
+  useEffect(() => {
+    const bundle = sceneRef.current;
+    if (!bundle || !loaded) return;
+
+    for (const obj of pinObjectsRef.current) {
+      bundle.pinRoot.remove(obj);
+      disposePinObject(obj);
+    }
+    pinObjectsRef.current = [];
+
+    if (!report || allPins.length === 0) return;
+
+    const revealedIds = new Set(
+      allPins.slice(0, revealedCount).map((p) => p.id),
+    );
+    const size = {
+      x: bundle.meshSize.x,
+      y: bundle.meshSize.y,
+      z: bundle.meshSize.z,
+    };
+
+    visiblePins.forEach((pin) => {
+      const isRevealed = revealedIds.has(pin.id);
+      const shouldAnimate =
+        isRevealed && !animatedPinIdsRef.current.has(pin.id);
+      if (shouldAnimate) animatedPinIdsRef.current.add(pin.id);
+
+      const world = anchorToWorld(pin.anchor, size);
+      const pinGroup = buildPinObject(
+        pin,
+        world,
+        size,
+        isRevealed,
+        shouldAnimate,
+      );
+      bundle.pinRoot.add(pinGroup);
+      pinObjectsRef.current.push(pinGroup);
+    });
+  }, [loaded, report, allPins, visiblePins, revealedCount]);
+
+  const pinBadge =
+    allPins.length > 0
+      ? `${allPins.length} HAZARD PIN${allPins.length === 1 ? "" : "S"}`
+      : running
+        ? "AGENT RUNNING"
+        : null;
 
   return (
     <section className="relative flex h-full flex-col gap-2 bg-[#0a0a0a] p-3">
@@ -167,9 +318,22 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
           <span className="h-1 w-1 bg-[#ff6b00]" />
           3D SCAN · LIDAR CAPTURE
         </div>
-        <span className="text-white/30">
-          {failed ? "PROCESSING" : loaded ? "READY" : "LOADING"}
-        </span>
+        <div className="flex items-center gap-3">
+          {pinBadge && (
+            <span
+              className={
+                allPins.length > 0
+                  ? "text-[#ffb27a]"
+                  : "animate-pulse text-white/40"
+              }
+            >
+              {pinBadge}
+            </span>
+          )}
+          <span className="text-white/30">
+            {failed ? "PROCESSING" : loaded ? "READY" : "LOADING"}
+          </span>
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-sm border border-[#ff6b00]/20 bg-black/60">
@@ -193,12 +357,25 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
           </div>
         )}
 
+        {loaded && !failed && allPins.length > 0 && (
+          <HazardPinFilter
+            filter={hazardFilter}
+            onFilterChange={setHazardFilter}
+            counts={pinCounts}
+            indexing={indexing}
+          />
+        )}
+
         {loaded && !failed && (
-          <ScanMetadata vertexCount={vertexCount} />
+          <ScanMetadata
+            vertexCount={vertexCount}
+            pinCount={allPins.length}
+            revealedCount={revealedCount}
+          />
         )}
 
         {loaded && !interacted && !failed && (
-          <div className="pointer-events-none absolute bottom-3 right-4 font-mono text-[9px] tracking-[0.3em] text-white/40 transition-opacity duration-300">
+          <div className="pointer-events-none absolute bottom-3 right-4 font-mono text-[9px] tracking-[0.3em] text-white/40">
             DRAG TO ROTATE · SCROLL TO ZOOM
           </div>
         )}
@@ -207,16 +384,101 @@ export function BuildingScan({ buildingId }: { buildingId: string }) {
   );
 }
 
-function ScanMetadata({ vertexCount }: { vertexCount: number | null }) {
+function buildPinObject(
+  pin: ScanHazardPin,
+  world: { x: number; y: number; z: number },
+  size: { x: number; y: number; z: number },
+  visible: boolean,
+  animate: boolean,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.position.set(world.x, world.y, world.z);
+
+  const markerScale = Math.max(size.x, size.y, size.z) * 0.006 || 0.012;
+  const glow = SEVERITY_GLOW[pin.severity] ?? 0.5;
+  const dotGeo = new THREE.SphereGeometry(markerScale, 10, 10);
+  const dotMat = new THREE.MeshBasicMaterial({
+    color: severityHex(pin.severity),
+    transparent: true,
+    opacity: 0.95,
+  });
+  const dot = new THREE.Mesh(dotGeo, dotMat);
+  group.add(dot);
+
+  const ringGeo = new THREE.RingGeometry(
+    markerScale * 1.5,
+    markerScale * 2.3,
+    24,
+  );
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: severityHex(pin.severity),
+    transparent: true,
+    opacity: 0.35 * glow,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  group.add(ring);
+
+  const labelEl = createPinElement(pin, {
+    hidden: !visible,
+    animate: visible && animate,
+  });
+  const label = new CSS2DObject(labelEl);
+  label.position.set(0, markerScale * 5, 0);
+  group.add(label);
+
+  group.userData = { pinId: pin.id, dotMat, ringMat, labelEl };
+  return group;
+}
+
+function disposePinObject(obj: THREE.Object3D) {
+  obj.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mesh = child as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else mat?.dispose();
+    }
+  });
+}
+
+function severityHex(severity: ScanHazardPin["severity"]): number {
+  const map: Record<ScanHazardPin["severity"], number> = {
+    LOW: 0xd1d5db,
+    MODERATE: 0xfbbf24,
+    HIGH: 0xff6b00,
+    SEVERE: 0xef4444,
+  };
+  return map[severity];
+}
+
+function ScanMetadata({
+  vertexCount,
+  pinCount,
+  revealedCount,
+}: {
+  vertexCount: number | null;
+  pinCount: number;
+  revealedCount: number;
+}) {
   const vertsLabel = vertexCount
     ? vertexCount >= 1_000_000
       ? `${(vertexCount / 1_000_000).toFixed(1)}M VERTICES`
       : `${Math.round(vertexCount / 1000)}K VERTICES`
     : "180K VERTICES";
+
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-white/[0.08] bg-black/70 px-3 py-2 font-mono text-[10px] leading-relaxed backdrop-blur">
       <Row label="CAPTURE" value="PHONE LIDAR · 5 MIN" />
       <Row label="MESH" value={vertsLabel} />
+      {pinCount > 0 && (
+        <Row
+          label="HAZARDS"
+          value={`${Math.min(revealedCount, pinCount)}/${pinCount} INDEXED`}
+        />
+      )}
       <Row label="ACCURACY" value="±5CM" />
     </div>
   );
