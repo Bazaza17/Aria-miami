@@ -191,12 +191,15 @@ export function BuildingScan({
       labelRenderer.domElement.style.pointerEvents = "none";
       mount.appendChild(labelRenderer.domElement);
 
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x111122, 0.85));
-      const key = new THREE.DirectionalLight(0xffffff, 1.2);
+      // Bright, even lighting so the scan reads well from every auto-rotate
+      // angle (no dark side).
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const key = new THREE.DirectionalLight(0xffffff, 1.1);
       key.position.set(3, 4, 2);
       scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffb27a, 0.35);
-      fill.position.set(-2, 1, -3);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.9);
+      fill.position.set(-3, 2, -3);
       scene.add(fill);
 
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -224,24 +227,6 @@ export function BuildingScan({
             ).scene
           : await new USDZLoader().loadAsync(scanUrl);
         if (cancelled) return;
-
-        // Photogrammetry textures already have lighting baked in. PBR shading
-        // re-lights them and turns the scan nearly black at most angles, so
-        // swap to an unlit material that shows the photo texture at full,
-        // angle-independent brightness.
-        group.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const src = mesh.material as THREE.MeshStandardMaterial;
-          const map = src?.map ?? null;
-          if (map) map.colorSpace = THREE.SRGBColorSpace;
-          mesh.material = new THREE.MeshBasicMaterial({
-            map,
-            color: map ? 0xffffff : (src?.color ?? new THREE.Color(0x888888)),
-            side: THREE.DoubleSide,
-          });
-          src?.dispose?.();
-        });
 
         const box = new THREE.Box3().setFromObject(group);
         const center = box.getCenter(new THREE.Vector3());
