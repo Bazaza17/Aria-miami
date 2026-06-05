@@ -28,14 +28,9 @@ API_BASE = os.environ.get("ARIA_API_URL", "http://localhost:8000")
 
 DEMO_BUILDINGS: list[tuple[str, str, str]] = [
     (
-        "Building A",
-        "014b39a9-09b8-432b-9b62-363e06383d1f",
-        "592 NE 60th St, Miami, FL 33137",
-    ),
-    (
-        "Building B",
-        "870d979d-6eaf-4d7f-894a-8ca34e527237",
-        "Innovation Center — 592 NE 60th St, Miami, FL",
+        "The Dock",
+        "e5a3fddc-e22c-431c-a5d3-ee29ef8604d1",
+        "400 NW 26th St, Miami, FL 33127",
     ),
 ]
 

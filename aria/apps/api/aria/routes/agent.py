@@ -77,24 +77,36 @@ async def _captured_stream(req: AgentRunRequest) -> AsyncIterator[str]:
     tool_call_count = 0
     iteration_count = 0
 
-    async for sse_chunk in run_agent(req.address, req.scenario_params):
-        event_type, payload = _parse_sse_chunk(sse_chunk)
-        if event_type is not None:
-            ms = int((time.monotonic() - started) * 1000)
-            buffer.append(
-                {
-                    "event_type": event_type,
-                    "payload": payload,
-                    "ms_since_start": ms,
-                }
-            )
-            if event_type == "tool_call":
-                tool_call_count += 1
-            elif event_type == "thinking":
-                iteration_count += 1
-            elif event_type == "complete":
-                success = True
-        yield sse_chunk
+    # Keepalive: yield a comment every 15s so Railway/proxies don't cut the connection.
+    last_ping = time.monotonic()
+
+    try:
+        async for sse_chunk in run_agent(req.address, req.scenario_params):
+            now = time.monotonic()
+            if now - last_ping > 15:
+                yield ": ping\n\n"
+                last_ping = now
+
+            event_type, payload = _parse_sse_chunk(sse_chunk)
+            if event_type is not None:
+                ms = int((now - started) * 1000)
+                buffer.append(
+                    {
+                        "event_type": event_type,
+                        "payload": payload,
+                        "ms_since_start": ms,
+                    }
+                )
+                if event_type == "tool_call":
+                    tool_call_count += 1
+                elif event_type == "thinking":
+                    iteration_count += 1
+                elif event_type == "complete":
+                    success = True
+            yield sse_chunk
+    except Exception as e:  # noqa: BLE001
+        yield f"event: error\ndata: {json.dumps({'message': f'{type(e).__name__}: {e}'})}\n\n"
+        return
 
     if not success or not req.building_id:
         return
