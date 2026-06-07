@@ -16,13 +16,14 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from supabase import Client, create_client
 
 from aria.agent.loop import run_agent
 from aria.agent.prompts import ScenarioParams
+from aria.ratelimit import limiter
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -55,13 +56,16 @@ def _parse_sse_chunk(chunk: str) -> tuple[str | None, dict[str, Any] | None]:
 
 
 class AgentRunRequest(BaseModel):
-    address: str
+    # Bounded lengths so a malicious payload can't balloon the prompt / cost.
+    address: str = Field(min_length=3, max_length=200)
     scenario_params: ScenarioParams
-    building_id: str | None = None  # optional — required for cache write
+    building_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/run")
-async def run(req: AgentRunRequest) -> StreamingResponse:
+# Live runs hit Anthropic and cost money — keep this tight.
+@limiter.limit("5/minute;30/day")
+async def run(request: Request, req: AgentRunRequest) -> StreamingResponse:
     """Live agent run. Captures events for cache if `building_id` provided."""
     return StreamingResponse(
         _captured_stream(req),
@@ -131,7 +135,11 @@ async def _captured_stream(req: AgentRunRequest) -> AsyncIterator[str]:
 
 
 @router.post("/replay/{building_id}")
-async def replay(building_id: str, speed: float = 1.0) -> StreamingResponse:
+# Cached replay is cheap (no Anthropic call) — allow generous demo traffic.
+@limiter.limit("60/minute")
+async def replay(
+    request: Request, building_id: str, speed: float = 1.0
+) -> StreamingResponse:
     """Replay a cached run with original timing (scaled by `speed`)."""
     sb = _get_supabase()
     if not sb:
